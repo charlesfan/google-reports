@@ -5,7 +5,8 @@ import sys
 import os
 import BaseHTTPServer, SimpleHTTPServer
 import SocketServer
-from gmb import _convertTime
+import argparse
+import json
 
 from apiclient import errors
 from apiclient.discovery import build
@@ -14,7 +15,6 @@ from oauth2client.client import OAuth2WebServerFlow
 from oauth2client.file import Storage
 import logging
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
-from package.tool import Credentials_obj
 
 import argparse
 import json
@@ -32,6 +32,15 @@ class RedirectHandler(SimpleHTTPServer. SimpleHTTPRequestHandler):
 		self.wfile.write("<body><p>Your code: %s</p>" % code)
 		self.wfile.write("</body></html>")
 		self.wfile.close()
+
+parser = argparse.ArgumentParser(prog='PROG')
+parser.add_argument('-a', '--application', help='[admin | docs | login | token]')
+parser.add_argument('-s', '--start', help='How many days before you want to query')
+
+arg = parser.parse_args()
+
+application = arg.application
+start=int(arg.start)+1
 
 httpd = Server(('', 8888), RedirectHandler)
 #Google Web Application Client ID in developer console
@@ -75,14 +84,21 @@ storage.put(credentials)
 
 reports_service = build('admin', 'reports_v1', http=http)
 
-# Set start time to one week ago, to avoid too many results
-one_week_ago = datetime.utcnow() - timedelta(days=7)
-start_time = one_week_ago.isoformat('T') + 'Z'
+# Set start time
+time_shift = datetime.now() - timedelta(days=start) + timedelta(hours=8)
+#time_shift = datetime.now() - timedelta(days=start)
+start_time = time_shift.isoformat('T') + 'Z'
+
+# Set today: 00:00:00.00 to be end time
+now = datetime.now() + timedelta(hours=8)
+#now = datetime.now()
+now_str = str(now.year) + str(now.month) + str(now.day)
+end_time = datetime.strptime(now_str, '%Y%m%d').isoformat('T') + 'Z'
 
 all_logins = []
 page_token = None
 #Set Report params. Application name can change to: {Admin | token | doc} if you want.
-params = {'applicationName': 'login', 'userKey': 'all', 'startTime': start_time}
+params = {'applicationName': application, 'userKey': 'all', 'startTime': start_time, 'endTime': end_time}
 
 while True:
 	try:
@@ -99,7 +115,8 @@ while True:
 		break
 
 for activity in all_logins:
-	print activity['id']['time']
+	time_ = datetime.strptime(activity['id']['time'], '%Y-%m-%dT%H:%M:%S.%fZ')
+	print time_
 	for event in activity['events']:
 		print "===================================================="
 		print json.dumps(event, separators=(',',':'))
